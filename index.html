@@ -1,10 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Afterglow</title>
-<style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Metno — Monte Weber</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=Jost:wght@100;200;300&display=swap" rel="stylesheet">
+  <style>
+
   @import url('https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap');
   * { margin:0; padding:0; box-sizing:border-box; }
   :root { --cream:#f0e8d8; --warm:#c8a97a; --dark:#1a1410; }
@@ -53,28 +56,239 @@
   canvas { position:fixed; top:0; left:0; pointer-events:none; display:block; border:0; outline:0; }
   #bg { position:fixed; top:0; left:0; z-index:0; pointer-events:none; }
   #c { z-index:1; }
-</style>
+
+
+    /* ── Site overlay ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      font-family: 'Cormorant Garamond', serif;
+      background: #f5f0e8;
+    }
+
+    /* Installation fills the entire viewport */
+    #installation-wrap {
+      position: fixed;
+      inset: 0;
+      z-index: 0;
+    }
+
+    /* Top bar */
+
+
+
+    /* Bio panel — bottom left */
+    .bio-panel {
+      position: fixed;
+      bottom: 44px;
+      left: 40px;
+      z-index: 100;
+      max-width: 320px;
+      opacity: 0;
+      transform: translateY(8px);
+      animation: fadeUp 2s ease 1.2s forwards;
+      padding: 22px 26px 22px 0;
+    }
+    .bio-panel.fade-out {
+      animation: none !important;
+      opacity: 0 !important;
+      transition: opacity 2s ease !important;
+      pointer-events: none !important;
+    }
+
+    @keyframes fadeUp {
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .bio-name {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-size: 48px;
+      line-height: 1;
+      color: rgba(15,30,20,1.0);
+      letter-spacing: -0.01em;
+      margin-bottom: 4px;
+      text-shadow: 0 2px 20px rgba(255,255,255,0.9), 0 0 40px rgba(255,255,255,0.6);
+    }
+
+    .bio-alias {
+      font-family: 'Jost', sans-serif;
+      font-weight: 200;
+      font-size: 10px;
+      letter-spacing: 0.4em;
+      text-transform: uppercase;
+      color: rgba(20,40,25,0.85);
+      margin-bottom: 18px;
+      text-shadow: 0 1px 10px rgba(255,255,255,0.7);
+    }
+
+    .bio-text {
+      font-family: 'Cormorant Garamond', serif;
+      font-weight: 400;
+      font-style: italic;
+      font-size: 15px;
+      line-height: 1.75;
+      color: rgba(20,38,28,0.82);
+      max-width: 290px;
+      text-shadow: 0 1px 8px rgba(255,255,255,0.5);
+    }
+
+    /* Play button — bottom right */
+    .play-wrap {
+      position: fixed;
+      bottom: 44px;
+      right: 40px;
+      z-index: 100;
+      opacity: 0;
+      animation: fadeUp 2s ease 1.8s forwards;
+    }
+
+
+
+    /* Hide all installation UI — site handles its own UI */
+    .btn-wrap, #btnWrap, .play-btn, .stop-btn, .corner, .hint, .note-disp { display: none !important; }
+
+    .play-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      cursor: pointer;
+      transition: opacity 1.5s ease;
+    }
+
+    .play-overlay.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .play-circle {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      border: 1px solid rgba(30,50,35,0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.4s, transform 0.3s;
+    }
+
+    .play-overlay:hover .play-circle {
+      border-color: rgba(30,50,35,0.6);
+      transform: scale(1.06);
+    }
+
+    .play-circle svg {
+      margin-left: 4px;
+    }
+
+    .play-label {
+      font-family: 'Jost', sans-serif;
+      font-weight: 100;
+      font-size: 9px;
+      letter-spacing: 0.45em;
+      text-transform: uppercase;
+      color: rgba(30,50,35,0.4);
+    }
+
+    /* Thin horizontal rule above bio */
+    .bio-rule {
+      width: 32px;
+      height: 1px;
+      background: rgba(40,60,45,0.25);
+      margin-bottom: 16px;
+    }
+    .text-slot {
+      position: relative;
+    }
+    .slot-text {
+      transition: opacity 1.5s ease;
+    }
+
+    .mute-btn {
+      position: fixed !important;
+      bottom: 40px !important;
+      right: 40px !important;
+      z-index: 300;
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-family: 'Jost', sans-serif;
+      font-weight: 200;
+      font-size: 11px;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      color: rgba(30,50,35,0.55);
+      padding: 0;
+      transition: color 0.4s, opacity 2s ease;
+      white-space: nowrap;
+      opacity: 0;
+      animation: fadeUp 2s ease 1.5s forwards;
+    }
+    .mute-btn:hover { color: rgba(30,50,35,0.9); }
+    .mute-btn.muted { color: rgba(150,60,60,0.65); }
+  </style>
 </head>
 <body>
 
-<div class="btn-wrap" id="btnWrap">
-  <button class="btn" id="playBtn" aria-label="Play">
-    <svg id="btnIcon" width="22" height="22" viewBox="0 0 24 24" fill="#c8a97a"><polygon points="5,3 19,12 5,21"/></svg>
-  </button>
-  <p class="hint" id="hint">tap to begin</p>
-</div>
-
-<canvas id="bg"></canvas>
-<canvas id="c"></canvas>
-<div class="corner">
-  <div class="note-indicator" id="noteDisp"></div>
-  <div class="title-row">
-    <h1 class="title">Afterglow</h1>
-    <button class="stop-btn" id="stopBtn">stop</button>
+  <!-- Installation canvas wrapper -->
+  <div id="installation-wrap">
+    <canvas id="bg"></canvas>
+    <canvas id="c"></canvas>
   </div>
-</div>
+
+
+
+  <button class="mute-btn" id="muteBtn">Sound On</button>
+
+  <div class="play-overlay" id="playOverlay">
+    <div class="play-circle">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="rgba(30,50,35,0.55)">
+        <polygon points="6,3 20,12 6,21"/>
+      </svg>
+    </div>
+    <span class="play-label">begin</span>
+  </div>
+
+  <div class="bio-panel">
+    <div class="bio-name" id="bioTitle">Metno</div>
+    <div class="bio-alias">Monte Weber</div>
+    <div class="bio-rule"></div>
+    <div class="text-slot">
+      <p class="bio-text slot-text" id="bioText">
+        Sound artist and electronic musician based in Hudson Valley, NY.
+        Monte Weber crafts ambient soundscapes through modular synthesis and
+        computer-assisted composition, conjuring delicate sonic ecosystems
+        that blur the boundaries between the organic and the electronic.
+      </p>
+      <p class="bio-text slot-text" id="notesText" style="display:none;">
+        <em>Afterglow</em> has no beginning and no end.<br><br>
+        A modal system drifts between G Mixolydian and D Dorian — notes chosen through
+        voice-leading logic, each tone aware of what came before. Chords bloom slowly
+        from the pitches already heard, summoned from memory. Pink noise swells shift
+        the color field as they rise and fall.<br><br>
+        Every sound leaves a mark. Pitch determines height, velocity determines weight.
+        The canvas feeds back into itself — zooming, rotating, pulling light inward
+        like liquid on glass. Nothing repeats exactly.
+      </p>
+    </div>
+  </div>
+
+
+
+
+
+
+
 
 <script>
+
 
 const rand = (a,b) => a + Math.random()*(b-a);
 const randInt = (a,b) => Math.floor(rand(a,b+1));
@@ -189,7 +403,7 @@ const VOICINGS = {
   ALL:['G2','A2','C3','E3','G3','B3','D4','F4','G4','A4','C5'],
 };
 
-let ctx, reverb, masterLPF, analyser=null, playing=false, lastNote=null;
+let ctx, reverb, masterLPF, masterGain=null, analyser=null, playing=false, lastNote=null;
 let timers=[];
 const addTimer=(fn,ms)=>{const t=setTimeout(fn,ms);timers.push(t);return t;};
 const clearTimers=()=>{timers.forEach(clearTimeout);timers=[];};
@@ -551,7 +765,7 @@ function startMusic() {
   compressor.threshold.value=-18; compressor.knee.value=10; compressor.ratio.value=3;
   compressor.attack.value=0.02; compressor.release.value=0.4;
   compressor.connect(limiter);
-  const masterGain = ctx.createGain(); masterGain.gain.value=0.7;
+  masterGain = ctx.createGain(); masterGain.gain.value=0.7;
   // Analyser tap — reads amplitude and frequency data for visuals
   analyser = ctx.createAnalyser();
   analyser.fftSize = 256;
@@ -580,35 +794,111 @@ function stopMusic() {
   noteDisp.textContent=''; noteDisp.classList.remove('visible');
 }
 
-const btn=document.getElementById('playBtn');
-const btnWrap=document.getElementById('btnWrap');
-const stopBtn=document.getElementById('stopBtn');
-let btnHideTimer=null;
+// ── Play button ───────────────────────────────────────────────────────────────
+let hasStarted = false;
+function tryAutoplay() {
+  if (hasStarted) return;
+  hasStarted = true;
+  playing = true;
+  startMusic();
+  scheduleTextFade();
+  // Hide play overlay
+  const overlay = document.getElementById('playOverlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+const playOverlay = document.getElementById('playOverlay');
+if (playOverlay) playOverlay.addEventListener('click', tryAutoplay);
 
-stopBtn.addEventListener('click',()=>{
-  playing=false; stopMusic(); stopBtn.classList.remove('visible');
-  btnWrap.style.display='flex'; btnWrap.style.opacity='1';
-  // Reset canvas
-  if(typeof orbs !== 'undefined') orbs.length = 0;
-  if(typeof g !== 'undefined'){ g.clearRect(0,0,W,H); }
-  if(typeof swellShift !== 'undefined'){ swellShift=0; swellShiftTarget=0; }
-  document.getElementById('btnIcon').outerHTML=`<svg id="btnIcon" width="22" height="22" viewBox="0 0 24 24" fill="#c8a97a"><polygon points="5,3 19,12 5,21"/></svg>`;
-  document.getElementById('hint').style.opacity='0.22';
-});
+// ── Cycling text: bio → fade out → notes → fade out → bio → ... ─────────────
+let textCycling = false;
+let currentSlot = 'bio'; // 'bio', 'notes', 'nothing'
 
-btn.addEventListener('click',()=>{
-  playing=!playing;
-  if(playing){
-    startMusic();
-    document.getElementById('btnIcon').outerHTML=`<svg id="btnIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#c8a97a" stroke-width="2.2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-    document.getElementById('hint').style.opacity='0';
-    btnHideTimer = setTimeout(()=>{ btnWrap.style.display='none'; }, 2000);
-    setTimeout(()=>{ if(playing) document.getElementById('stopBtn').classList.add('visible'); }, 20000);
-  } else {
-    stopMusic(); clearTimeout(btnHideTimer); btnWrap.classList.remove('hide');
-    document.getElementById('btnIcon').outerHTML=`<svg id="btnIcon" width="22" height="22" viewBox="0 0 24 24" fill="#c8a97a"><polygon points="5,3 19,12 5,21"/></svg>`;
+function fadeElement(el, toOpacity, duration, cb) {
+  el.style.transition = `opacity ${duration}ms ease`;
+  el.style.opacity = toOpacity;
+  if (cb) setTimeout(cb, duration);
+}
+
+function showSlot(which) {
+  const bioEl   = document.getElementById('bioText');
+  const notesEl = document.getElementById('notesText');
+  const show = which === 'bio' ? bioEl : notesEl;
+  const hide = which === 'bio' ? notesEl : bioEl;
+  hide.style.display = 'none';
+  show.style.display = 'block';
+  show.style.opacity = '0';
+  show.offsetHeight;
+  show.style.transition = 'opacity 1.5s ease';
+  show.style.opacity = '1';
+  currentSlot = which;
+  // Swap title
+  const titleEl = document.getElementById('bioTitle');
+  if (titleEl) titleEl.textContent = which === 'bio' ? 'Metno' : 'Afterglow';
+}
+
+function startCycle() {
+  if (textCycling) return;
+  textCycling = true;
+
+  const bioPanel = document.querySelector('.bio-panel');
+  const bioEl    = document.getElementById('bioText');
+
+  // Step 1: kill animation on panel, fade it out
+  bioPanel.style.animation = 'none';
+  bioPanel.style.opacity = window.getComputedStyle(bioPanel).opacity;
+  bioPanel.offsetHeight;
+
+  // Sequence: bio → notes → nothing → bio → ...
+  const sequence = ['bio', 'notes', 'nothing'];
+  const holdTimes = { bio: 14000, notes: 20000, nothing: 18000 };
+  let seqIndex = 0;
+
+  function cycleStep() {
+    // Fade panel out
+    fadeElement(bioPanel, '0', 1500, () => {
+      seqIndex = (seqIndex + 1) % sequence.length;
+      const next = sequence[seqIndex];
+      if (next === 'nothing') {
+        // Leave panel invisible — just hold
+        currentSlot = 'nothing';
+        const titleEl = document.getElementById('bioTitle');
+        bioPanel.style.pointerEvents = 'none';
+      } else {
+        showSlot(next);
+        bioPanel.style.pointerEvents = 'all';
+        fadeElement(bioPanel, '1', 1500);
+      }
+      setTimeout(cycleStep, holdTimes[next]);
+    });
   }
-});
+
+  // First fade out after 12s
+  setTimeout(cycleStep, 12000);
+}
+
+function scheduleTextFade() {
+  startCycle();
+}
+
+
+
+// ── Mute button ───────────────────────────────────────────────────────────────
+let muted = false;
+const muteBtn = document.getElementById('muteBtn');
+if (muteBtn) {
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    muted = !muted;
+    if (masterGain && ctx) {
+      const now = ctx.currentTime;
+      masterGain.gain.cancelScheduledValues(now);
+      masterGain.gain.setValueAtTime(masterGain.gain.value, now);
+      masterGain.gain.linearRampToValueAtTime(muted ? 0.0 : 0.7, now + 1.2);
+    }
+    muteBtn.textContent = muted ? 'Sound Off' : 'Sound On';
+    muteBtn.classList.toggle('muted', muted);
+  });
+}
 
 
 // ── Visual — stripped, music only ────────────────────────────────────────────
@@ -652,6 +942,7 @@ const resize = () => {
 };
 resize();
 window.addEventListener('resize', resize);
+
 
 let swellShift = 0, swellShiftTarget = 0, swellShiftSpeed = 0;
 let feedbackAngle = 0; // accumulates each frame for spiral spin effect
@@ -1096,6 +1387,7 @@ draw();
 bg.fillStyle = '#fcf5e8';
 bg.fillRect(0, 0, W, H);
 drawBackground();
+
 
 </script>
 </body>
