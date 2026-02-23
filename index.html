@@ -959,30 +959,45 @@ function draw() {
   const smearY = Math.cos(Date.now() * 0.0002) * 0.4 + audioAmp * 0.8;
   const aberration = 1.0 + audioAmp * 2.5;
 
-  // Slow cumulative spin — the whole feedback field rotates like a spiral
+  // Slow cumulative spin
   feedbackAngle += 0.00018 + audioBass * 0.0003;
 
-  // Red channel — shift right + spin
+  // Pivot points drift off-center over time — breaks the concentric circle effect
+  const t = Date.now() * 0.0001;
+  const pivotRx = W * 0.18 * Math.sin(t * 0.7);
+  const pivotRy = H * 0.12 * Math.cos(t * 0.5);
+  const pivotGx = W * 0.12 * Math.cos(t * 0.4);
+  const pivotGy = H * 0.15 * Math.sin(t * 0.6);
+  const pivotBx = W * 0.14 * Math.sin(t * 0.9 + 1.2);
+  const pivotBy = H * 0.10 * Math.cos(t * 0.8 + 0.8);
+
+  // Red channel — eccentric pivot + non-uniform scale (squish slightly)
   g.save();
   g.globalAlpha = 0.025 + audioBass * 0.015;
-  g.translate(W/2 + aberration + smearX, H/2 + smearY * 0.5);
-  g.rotate(feedbackAngle); g.scale(fbScale, fbScale); g.translate(-W/2, -H/2);
+  g.translate(W/2 + pivotRx + aberration + smearX, H/2 + pivotRy + smearY * 0.5);
+  g.rotate(feedbackAngle);
+  g.scale(fbScale * 1.002, fbScale * 0.999); // slight squish breaks circle
+  g.translate(-(W/2 + pivotRx), -(H/2 + pivotRy));
   g.drawImage(offscreen, 0, 0, W, H);
   g.restore();
 
-  // Green channel — pure spin, no aberration offset
+  // Green channel — different eccentric pivot
   g.save();
   g.globalAlpha = 0.02 + audioBass * 0.01;
-  g.translate(W/2 + smearX * 0.3, H/2 + smearY * 0.3);
-  g.rotate(feedbackAngle * 0.7); g.scale(fbScale, fbScale); g.translate(-W/2, -H/2);
+  g.translate(W/2 + pivotGx + smearX * 0.3, H/2 + pivotGy + smearY * 0.3);
+  g.rotate(feedbackAngle * 0.7);
+  g.scale(fbScale * 0.999, fbScale * 1.002);
+  g.translate(-(W/2 + pivotGx), -(H/2 + pivotGy));
   g.drawImage(offscreen, 0, 0, W, H);
   g.restore();
 
-  // Blue channel — opposite spin direction for chromatic twist
+  // Blue channel — counter-rotate around third pivot
   g.save();
   g.globalAlpha = 0.025 + audioBass * 0.015;
-  g.translate(W/2 - aberration + smearX * 1.5, H/2 + smearY);
-  g.rotate(-feedbackAngle * 0.5); g.scale(fbScale, fbScale); g.translate(-W/2, -H/2);
+  g.translate(W/2 + pivotBx - aberration + smearX * 1.5, H/2 + pivotBy + smearY);
+  g.rotate(-feedbackAngle * 0.5);
+  g.scale(fbScale, fbScale * 1.003);
+  g.translate(-(W/2 + pivotBx), -(H/2 + pivotBy));
   g.drawImage(offscreen, 0, 0, W, H);
   g.restore();
 
