@@ -9,21 +9,14 @@
   * { margin:0; padding:0; box-sizing:border-box; }
   :root { --cream:#f0e8d8; --warm:#c8a97a; --dark:#1a1410; }
   body {
-    background:var(--dark); color:var(--cream);
+    background:#fcf5e8; color:var(--cream);
     font-family:'IM Fell English',serif;
     height:100dvh; display:flex; flex-direction:column;
     align-items:center; justify-content:center;
     overflow:hidden; user-select:none;
   }
 
-  body::after {
-    content:''; position:fixed; inset:0;
-    background:radial-gradient(ellipse at center,transparent 30%,rgba(0,0,0,0.78) 100%);
-    pointer-events:none; z-index:9;
-  }
-  canvas { position:fixed; inset:0; }
-  #c { z-index:1; }
-  #trail-canvas { z-index:3; pointer-events:none; }
+
 
   .btn-wrap {
     position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
@@ -57,11 +50,12 @@
   .note-indicator { font-size:clamp(0.7rem,2vw,0.9rem); letter-spacing:0.45em; color:var(--warm); opacity:0; transition:opacity 1.4s ease; font-style:italic; min-height:1.1em; }
   .note-indicator.visible { opacity:0.55; }
   .title { font-size:clamp(0.9rem,2.5vw,1.3rem); letter-spacing:0.2em; opacity:0.55; font-weight:normal; }
+  canvas { position:fixed; top:0; left:0; pointer-events:none; display:block; border:0; outline:0; }
+  #bg { position:fixed; top:0; left:0; z-index:0; pointer-events:none; }
+  #c { z-index:1; }
 </style>
 </head>
 <body>
-<canvas id="trail-canvas"></canvas>
-<canvas id="c"></canvas>
 
 <div class="btn-wrap" id="btnWrap">
   <button class="btn" id="playBtn" aria-label="Play">
@@ -70,6 +64,8 @@
   <p class="hint" id="hint">tap to begin</p>
 </div>
 
+<canvas id="bg"></canvas>
+<canvas id="c"></canvas>
 <div class="corner">
   <div class="note-indicator" id="noteDisp"></div>
   <div class="title-row">
@@ -193,7 +189,7 @@ const VOICINGS = {
   ALL:['G2','A2','C3','E3','G3','B3','D4','F4','G4','A4','C5'],
 };
 
-let ctx, reverb, masterLPF, playing=false, lastNote=null;
+let ctx, reverb, masterLPF, analyser=null, playing=false, lastNote=null;
 let timers=[];
 const addTimer=(fn,ms)=>{const t=setTimeout(fn,ms);timers.push(t);return t;};
 const clearTimers=()=>{timers.forEach(clearTimeout);timers=[];};
@@ -334,40 +330,16 @@ function playNote(actx, freqHz, time, opts={}) {
 
 function bloomChord(actx) {
   if (!playing || !ctx) return;
-  const unique = [...new Set(recentNotes.slice(-6))];
-  let voicingKey = 'G4';
-  if (unique.length >= 5) { voicingKey = 'ALL'; }
-  else if (unique.length >= 4 && unique.includes('G4') && unique.includes('A4')) { voicingKey = 'ALL'; }
-  else if (unique.includes('D4') && unique.includes('A4')) { voicingKey = 'DA'; }
-  else if (unique.includes('G4') && unique.includes('A4')) { voicingKey = 'GA'; }
-  else if (unique.includes('D4')) { voicingKey = 'D4'; }
-  else if (unique.includes('A4')) { voicingKey = 'A4'; }
-  else if (unique.length >= 4) { voicingKey = 'ALL'; }
-  else if (unique.length === 3) {
-    voicingKey = unique.includes('G4') && unique.includes('F4') ? 'GF'
-               : unique.includes('G4') && unique.includes('E4') ? 'GE'
-               : unique.includes('G4') && unique.includes('C4') ? 'GC'
-               : unique.includes('F4') && unique.includes('E4') ? 'FE'
-               : unique.includes('F4') && unique.includes('C4') ? 'FC' : 'EC';
-  } else if (unique.length === 2) {
-    if      (unique.includes('G4') && unique.includes('F4')) voicingKey='GF';
-    else if (unique.includes('G4') && unique.includes('E4')) voicingKey='GE';
-    else if (unique.includes('G4') && unique.includes('C4')) voicingKey='GC';
-    else if (unique.includes('F4') && unique.includes('E4')) voicingKey='FE';
-    else if (unique.includes('F4') && unique.includes('C4')) voicingKey='FC';
-    else if (unique.includes('D4') && unique.includes('A4')) voicingKey='DA';
-    else if (unique.includes('G4') && unique.includes('A4')) voicingKey='GA';
-    else voicingKey='EC';
-  } else if (unique.length === 1) { voicingKey = unique[0]; }
-
-  const notes = VOICINGS[voicingKey] || VOICINGS['G4'];
+  // Use the EXACT notes heard recently — same pitches, same registers
+  const notes = [...new Set(recentNotes.slice(-8))];
+  if(notes.length === 0) return;
   const chordDur = rand(8, 16);
   const fadeIn   = rand(2.5, 5);
   const now = actx.currentTime;
   const chordMaster = actx.createGain();
   chordMaster.gain.setValueAtTime(0, now);
-  chordMaster.gain.linearRampToValueAtTime(rand(0.06,0.12), now+fadeIn);
-  chordMaster.gain.setValueAtTime(rand(0.06,0.12), now+chordDur*0.6);
+  chordMaster.gain.linearRampToValueAtTime(rand(0.03,0.06), now+fadeIn);
+  chordMaster.gain.setValueAtTime(rand(0.03,0.06), now+chordDur*0.6);
   chordMaster.gain.linearRampToValueAtTime(0, now+chordDur);
   const chordWet = actx.createGain(); chordWet.gain.value=0.85;
   const chordDry = actx.createGain(); chordDry.gain.value=0.15;
@@ -384,8 +356,8 @@ function bloomChord(actx) {
     const osc3=actx.createOscillator(); osc3.type='sine'; osc3.frequency.value=f*3.002;
     const og=actx.createGain();
     og.gain.setValueAtTime(0, now+stagger);
-    og.gain.linearRampToValueAtTime(1.0/(notes.length*0.7), now+stagger+rand(1,2.5));
-    og.gain.setValueAtTime(1.0/(notes.length*0.7), now+chordDur*0.55);
+    og.gain.linearRampToValueAtTime(1.0/(notes.length*1.4), now+stagger+rand(1,2.5));
+    og.gain.setValueAtTime(1.0/(notes.length*1.4), now+chordDur*0.55);
     og.gain.linearRampToValueAtTime(0, now+chordDur-stagger);
     const h2g=actx.createGain(); h2g.gain.value=0.18;
     const h3g=actx.createGain(); h3g.gain.value=0.07;
@@ -397,6 +369,8 @@ function bloomChord(actx) {
   });
   chordBloom=true;
   setTimeout(()=>{ chordBloom=false; }, chordDur*1000*0.7);
+  // Spawn visual chord formation
+  if(typeof window._visualChordHook === 'function') window._visualChordHook(notes);
 }
 
 function playOceanSwell(actx) {
@@ -423,6 +397,8 @@ function playOceanSwell(actx) {
   lfo.start(); lfo.stop(actx.currentTime+dur);
   src.start(); src.stop(actx.currentTime+dur);
   swellActive=true; swellIntensity=peak/0.20;
+  // Notify visual system with exact duration
+  if(typeof window._visualSwellHook === 'function') window._visualSwellHook(dur);
   setTimeout(()=>{swellActive=false;swellIntensity=0;},dur*1000);
 }
 
@@ -494,6 +470,18 @@ function pickMelodyNote() {
 
 const noteDisp=document.getElementById('noteDisp');
 
+// ── Trigger stubs — visuals not yet rebuilt ──────────────────────────────────
+function triggerPulse(rev=false, vol=0.13, decay=5){
+  // visual stub only — audio handled by scheduleMain
+}
+function triggerPolyOrb(){
+  if(!ctx) return;
+  const notes = ['G4','D4','A4','E4','C4'];
+  const f2 = MIX[notes[Math.floor(Math.random()*notes.length)]];
+  playNote(ctx, f2, ctx.currentTime+0.05, {vol:rand(0.05,0.08), decay:rand(2,4), pan:rand(-0.8,0.8)});
+}
+function triggerChordVisual(){ /* visual stub */ }
+
 function scheduleMain() {
   if (!playing||!ctx) return;
   const name = pickMelodyNote();
@@ -508,27 +496,22 @@ function scheduleMain() {
   const ms = Math.max(0,(nextNoteT-ctx.currentTime)*1000);
   addTimer(()=>{
     if(!playing) return;
-    // Y position from pitch, X random, velocity drives opacity+color vibrancy
-    const pitchY = PITCH_Y[name] !== undefined ? PITCH_Y[name] : 0.5;
-    const spawnY = pitchY + rand(-0.04, 0.04); // tiny variation around pitch lane
-    const orb = spawnButterfly({vol:noteVol, decay:noteDecay, rev:isRev, spawnY, velocity:noteVol});
-    if(orb && ctx) {
-      const pan = (orb.x * 2) - 1;
-      playNote(ctx, f, ctx.currentTime+0.05, {
-        reversed:isRev, dryWet:0.62, vol:noteVol, decay:noteDecay,
-        pan, pannerRef: orb.pannerRef
-      });
-    }
+    const pan = rand(-0.8, 0.8);
+    playNote(ctx, f, ctx.currentTime+0.05, {
+      reversed:isRev, dryWet:0.62, vol:noteVol, decay:noteDecay, pan
+    });
+    // Spawn visual orb — pitch sets Y, velocity sets size/opacity
+    if(typeof spawnOrb === 'function') spawnOrb({ noteName: name, velocity: noteVol / 0.22 });
   }, ms);
   addTimer(scheduleMain,(gap-1.4)*1000);
 }
 
 function scheduleChordBloom() {
   if(!playing||!ctx) return;
-  const wait = rand(12000,22000);
+  const wait = rand(25000,50000);
   addTimer(()=>{
     if(!playing||!ctx) return;
-    if([...new Set(recentNotes)].length >= 4) bloomChord(ctx);
+    if([...new Set(recentNotes)].length >= 3) bloomChord(ctx);
     scheduleChordBloom();
   }, wait);
 }
@@ -545,7 +528,7 @@ function schedulePolyrhythm() {
       for(let pi=0;pi<ratio;pi++) setTimeout(triggerPolyOrb, pi*(pulse*4/ratio)*1000);
     }
     schedulePolyrhythm();
-  }, rand(20000,45000));
+  }, rand(60000,120000));
 }
 
 function scheduleOceanSwell() {
@@ -569,7 +552,12 @@ function startMusic() {
   compressor.attack.value=0.02; compressor.release.value=0.4;
   compressor.connect(limiter);
   const masterGain = ctx.createGain(); masterGain.gain.value=0.7;
-  masterGain.connect(compressor);
+  // Analyser tap — reads amplitude and frequency data for visuals
+  analyser = ctx.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.75;
+  masterGain.connect(analyser);
+  analyser.connect(compressor);
   masterLPF = ctx.createBiquadFilter();
   masterLPF.type='lowpass'; masterLPF.frequency.value=5500; masterLPF.Q.value=0.4;
   masterLPF.frequency.setValueAtTime(5500,ctx.currentTime);
@@ -599,7 +587,11 @@ let btnHideTimer=null;
 
 stopBtn.addEventListener('click',()=>{
   playing=false; stopMusic(); stopBtn.classList.remove('visible');
-  butterflies.length=0; btnWrap.style.display='flex'; btnWrap.style.opacity='1';
+  btnWrap.style.display='flex'; btnWrap.style.opacity='1';
+  // Reset canvas
+  if(typeof orbs !== 'undefined') orbs.length = 0;
+  if(typeof g !== 'undefined'){ g.clearRect(0,0,W,H); }
+  if(typeof swellShift !== 'undefined'){ swellShift=0; swellShiftTarget=0; }
   document.getElementById('btnIcon').outerHTML=`<svg id="btnIcon" width="22" height="22" viewBox="0 0 24 24" fill="#c8a97a"><polygon points="5,3 19,12 5,21"/></svg>`;
   document.getElementById('hint').style.opacity='0.22';
 });
@@ -618,73 +610,66 @@ btn.addEventListener('click',()=>{
   }
 });
 
-// ── Canvas ────────────────────────────────────────────────────────────────────
-const trailCanvas=document.getElementById('trail-canvas'), tg=trailCanvas.getContext('2d');
-const canvas=document.getElementById('c'), g=canvas.getContext('2d');
-let W,H;
-const resize=()=>{
+
+// ── Visual — stripped, music only ────────────────────────────────────────────
+// Canvas and trail drawing removed for rebuild.
+// Body background is plain cream — no canvas artifacts.
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VISUAL SYSTEM — built fresh, isolated from music
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VISUAL SYSTEM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ── Canvas setup ──────────────────────────────────────────────────────────────
+const bgCanvas = document.getElementById('bg');
+const bg = bgCanvas.getContext('2d');
+const canvas = document.getElementById('c');
+// Offscreen canvas for chromatic aberration processing
+const offscreen = document.createElement('canvas');
+const off = offscreen.getContext('2d');
+const g = canvas.getContext('2d');
+let W, H;
+
+const resize = () => {
   const dpr = window.devicePixelRatio || 1;
   W = window.innerWidth;
   H = window.innerHeight;
-  canvas.width = W * dpr;      canvas.height = H * dpr;
-  trailCanvas.width = W * dpr; trailCanvas.height = H * dpr;
-  canvas.style.width = W + 'px';      canvas.style.height = H + 'px';
-  trailCanvas.style.width = W + 'px'; trailCanvas.style.height = H + 'px';
-  // Scale context so drawing coords stay in CSS pixels
-  g.scale(dpr, dpr);
-  tg.scale(dpr, dpr);
+  // Trail canvas
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  offscreen.width = W * dpr; offscreen.height = H * dpr;
+  off.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Background canvas
+  bgCanvas.width = W * dpr; bgCanvas.height = H * dpr;
+  bgCanvas.style.width = W + 'px'; bgCanvas.style.height = H + 'px';
+  bg.setTransform(dpr, 0, 0, dpr, 0, 0);
 };
-resize(); window.addEventListener('resize',resize);
+resize();
+window.addEventListener('resize', resize);
 
-let pieceAge=0, pieceStartTime=null;
-let hueShift=0, hueTarget=0;
+let swellShift = 0, swellShiftTarget = 0, swellShiftSpeed = 0;
+let feedbackAngle = 0; // accumulates each frame for spiral spin effect
+// Audio reactive data — updated each draw frame
+let audioAmp = 0;      // 0-1 overall amplitude
+let audioBass = 0;     // 0-1 low frequency energy
+let audioHigh = 0;     // 0-1 high frequency energy
+const freqData = new Uint8Array(128);
 
-const WHEEL = [
-  {r:255,g:165,b:  0},   // pure gold
-  {r:255,g:100,b:  0},   // pure orange
-  {r:255,g: 30,b: 50},   // pure red-coral
-  {r:220,g:  0,b:100},   // pure magenta-rose
-  {r:150,g:  0,b:210},   // pure violet
-  {r: 60,g: 60,b:255},   // pure indigo-blue
-  {r:  0,g:160,b:255},   // pure cyan-blue
-  {r:  0,g:210,b:180},   // pure cyan-teal
-  {r:255,g:165,b:  0},   // back to gold
-];
+window._visualSwellHook = function(dur) {
+  spawnLiquidBlob({ x:0.2+Math.random()*0.6, y:0.2+Math.random()*0.6, size:0.12+Math.random()*0.1, hue:Math.random() });
+  const rampFrames = (dur * 0.30 * 1000) / 16;
+  swellShiftSpeed = 1 / rampFrames;
+  swellShiftTarget = 1;
+  setTimeout(() => { swellShiftTarget = 0; }, dur * 0.62 * 1000);
+};
 
-function wheelRGB(hue) {
-  const h = ((hue % 1.0) + 1.0) % 1.0;
-  const seg = h * (WHEEL.length-1);
-  const i = Math.min(Math.floor(seg), WHEEL.length-2);
-  const s = seg - i;
-  const a=WHEEL[i], b2=WHEEL[i+1];
-  return [Math.round(a.r+(b2.r-a.r)*s), Math.round(a.g+(b2.g-a.g)*s), Math.round(a.b+(b2.b-a.b)*s)];
-}
-
-function duskRGB(bias, age) {
-  const baseHue = hueShift + bias * 0.85;
-  const [r,gv,bv] = wheelRGB(baseHue);
-  return [Math.max(0,Math.min(255,r)), Math.max(0,Math.min(255,gv)), Math.max(0,Math.min(255,bv))];
-}
-function dc(bias, opacity, age){ const [r,gv,b]=duskRGB(bias,age); return `rgba(${r},${gv},${b},${Math.min(Math.max(opacity,0),0.99)})`; }
-
-
-
-const washes = Array.from({length:9},(_,wi)=>({
-  x:rand(0.0,1.0), y:rand(0.0,1.0),
-  vx:rand(-0.00004,0.00004), vy:rand(-0.00003,0.00003),
-  r:rand(0.75,1.2),
-  bias: wi/9,
-  biasDrift: rand(-0.0003,0.0003),
-  opacity:rand(0.06,0.13),
-  opacityActual:0,
-  phase:rand(0,Math.PI*2),
-  phaseSpeed:rand(0.0002,0.0006)
-}));
-
-
-// ── Pitch → Y position mapping ────────────────────────────────────────────────
-// Lower notes appear lower on screen, higher notes appear higher
-// Maps each note name to a normalised Y position (0=top, 1=bottom)
+// ── Pitch → Y band ────────────────────────────────────────────────────────────
 const PITCH_Y = {
   G2:0.92, C3:0.86, G3:0.80, A3:0.76,
   C4:0.70, D4:0.65, E4:0.60, F4:0.55,
@@ -693,316 +678,410 @@ const PITCH_Y = {
   G5:0.14, A5:0.10, B5:0.06,
 };
 
-let butterflies=[];
+// ── Color palette ─────────────────────────────────────────────────────────────
+const PALETTE = [
+  [131,180,158],[169,219,180],[202,230,158],[235,224,142],[147,213,202],[136,191,219],[158,180,224],[180,208,235],
+];
+function pickColor(bias) {
+  const i = ((bias % 1 + 1) % 1) * (PALETTE.length - 1);
+  const a = PALETTE[Math.floor(i)];
+  const b = PALETTE[Math.min(Math.ceil(i), PALETTE.length-1)];
+  const t = i - Math.floor(i);
+  return [Math.round(a[0]+(b[0]-a[0])*t), Math.round(a[1]+(b[1]-a[1])*t), Math.round(a[2]+(b[2]-a[2])*t)];
+}
 
-function spawnButterfly(opts={}) {
-  const {vol=rand(0.10,0.15), decay=rand(4,7), rev=false,
-         spawnY=rand(0.15,0.85), velocity=0.13}=opts;
-  const baseSize = rand(10,18)*(0.7+vol*1.0);
-  const pannerRef = {node: null};
-  const velNorm = Math.max(0, Math.min(1, (velocity - 0.04) / 0.18));
-  const velOpacity = 0.15 + velNorm * 0.60;
-  const velVibrancy = 0.3 + velNorm * 0.7;
-  butterflies.push({
-    x: rand(0.08, 0.92), y: spawnY,
-    speed: rand(0.00006, 0.00045),  // wide range — some drift, some zip
-    angle: rand(0, Math.PI*2),
-    angleV: rand(-0.00004, 0.00004),
-    angleV2: rand(-0.000004, 0.000004),
-    sinX:0, sinXSpeed:0, sinXAmp:0, sinY:0, sinYSpeed:0, sinYAmp:0,
-    size: baseSize, opacity: 0,
-    targetOpacity: velOpacity,
-    vibrancy: velVibrancy,
-    // velocity drives max opacity
-    vibrancy: velVibrancy,            // velocity drives color vibrancy
-    life: 1.0, decay: 0.00012 + (1/decay)*0.0001,
-    rev, bias: rev ? rand(0.55,0.95) : rand(0.05,0.55),
-    age: pieceAge, trail: [], trailMax: 280, mergeCount: 0,
-    pannerRef,  // live stereo position reference
+// ── Background — watercolor sunset washes ────────────────────────────────────
+const SUNSET = [
+  [131,180,158],[147,202,169],[169,219,180],[202,230,158],[224,235,147],[235,224,142],[213,230,180],[147,213,202],[136,191,219],[158,180,224],[180,208,235],[131,180,158],
+];
+function getSunsetColor(pos) {
+  const p = ((pos % 1) + 1) % 1;
+  const scaled = p * (SUNSET.length - 1);
+  const i = Math.floor(scaled);
+  const t = scaled - i;
+  const a = SUNSET[i], b = SUNSET[Math.min(i+1, SUNSET.length-1)];
+  return [Math.round(a[0]+(b[0]-a[0])*t), Math.round(a[1]+(b[1]-a[1])*t), Math.round(a[2]+(b[2]-a[2])*t)];
+}
+// Large slow washes — big color fields
+const washes = Array.from({length: 7}, (_, i) => ({
+  x: Math.random(), y: Math.random(),
+  vx: (Math.random()-0.5)*0.00012, vy: (Math.random()-0.5)*0.00009,
+  r: 0.5 + Math.random()*0.45,
+  hue: i/7, hueSpeed: 0.00004 + Math.random()*0.00003,
+  opacity: 0.06 + Math.random()*0.07,
+}));
+// Medium detail blobs — smaller, faster, more contrast
+const midBlobs = Array.from({length: 9}, (_, i) => ({
+  x: Math.random(), y: Math.random(),
+  vx: (Math.random()-0.5)*0.00035, vy: (Math.random()-0.5)*0.00028,
+  r: 0.12 + Math.random()*0.22,
+  hue: Math.random(), hueSpeed: 0.00008 + Math.random()*0.00008,
+  opacity: 0.03 + Math.random()*0.045,
+}));
+// Small accent blobs — tiny pops of color
+const smallBlobs = Array.from({length: 12}, (_, i) => ({
+  x: Math.random(), y: Math.random(),
+  vx: (Math.random()-0.5)*0.0007, vy: (Math.random()-0.5)*0.0006,
+  r: 0.04 + Math.random()*0.09,
+  hue: Math.random(), hueSpeed: 0.00015 + Math.random()*0.0001,
+  opacity: 0.035 + Math.random()*0.05,
+}));
+
+function drawBackground() {
+  requestAnimationFrame(drawBackground);
+  if (swellShift < swellShiftTarget) swellShift = Math.min(swellShiftTarget, swellShift + swellShiftSpeed);
+  else if (swellShift > swellShiftTarget) swellShift = Math.max(swellShiftTarget, swellShift - swellShiftSpeed);
+
+
+  // Slowly fade toward cream base — no clearRect, no flash
+  bg.fillStyle = 'rgba(252,245,232,0.018)';
+  bg.fillRect(0, 0, W, H);
+  // Draw all blob layers
+  for (const blobs of [washes, midBlobs, smallBlobs]) {
+    for (const w of blobs) {
+      w.x += w.vx; w.y += w.vy;
+      if (w.x < -0.5) w.x = 1.5; if (w.x > 1.5) w.x = -0.5;
+      if (w.y < -0.5) w.y = 1.5; if (w.y > 1.5) w.y = -0.5;
+      w.hue = (w.hue + w.hueSpeed) % 1;
+      const [r,gv,bv] = getSunsetColor(w.hue + swellShift * 0.55); // 0.55 = nearly opposite
+      const rPx = w.r * Math.max(W, H);
+      const cx = w.x*W, cy = w.y*H;
+      const grad = bg.createRadialGradient(cx, cy, 0, cx, cy, rPx);
+      grad.addColorStop(0,   `rgba(${r},${gv},${bv},${w.opacity * (1 + swellShift * 1.2 + audioBass * 1.5)})`);
+      grad.addColorStop(0.5, `rgba(${r},${gv},${bv},${w.opacity*0.3})`);
+      grad.addColorStop(1,   'rgba(0,0,0,0)');
+      bg.fillStyle = grad;
+      bg.beginPath();
+      bg.arc(cx, cy, rPx, 0, Math.PI*2);
+      bg.fill();
+    }
+  }
+}
+
+// ── Orbs ──────────────────────────────────────────────────────────────────────
+const orbs = [];
+let colorCursor = Math.random();
+
+function spawnOrb(opts = {}) {
+  const { noteName='G4', velocity=0.13, isChord=false, chordIndex=0, chordAngle=null, chordId=null, sharedX=null, sharedY=null } = opts;
+  const pitchY = PITCH_Y[noteName] !== undefined ? PITCH_Y[noteName] : 0.5;
+  const spawnY = sharedY !== null ? sharedY : pitchY + (Math.random()-0.5)*0.05;
+  const spawnX = sharedX !== null ? sharedX : Math.random()*0.85 + 0.08;
+  // Weighted toward small — power curve so most trails are delicate, few are large
+  const velPow = Math.pow(velocity, 1.8);
+  const radius = 1.0 + velPow * 10;
+  const angle = chordAngle !== null ? chordAngle : Math.random()*Math.PI*2;
+  // Small = fast, large = slow — inverse relationship
+  // Small = very fast, large = very slow — dramatic range
+  const speed = (0.0008 - velPow * 0.00075) + Math.random() * 0.0004;
+  const turnRate = (Math.random()-0.5)*0.003;
+  colorCursor = (colorCursor + 0.07 + Math.random()*0.05) % 1;
+  const [r,gv,bv] = getSunsetColor(colorCursor); // same palette as background
+  let x = spawnX, y = spawnY;
+  if (isChord && chordIndex > 0) {
+    const perp = angle + Math.PI*0.5;
+    x = spawnX + Math.cos(perp)*0.045*chordIndex;
+    y = spawnY + Math.sin(perp)*0.045*chordIndex;
+  }
+  const turnAccel = (Math.random()-0.5) * 0.0003; // how fast turnRate itself changes
+  orbs.push({ x, y, angle, speed, turnRate, turnAccel, radius, velocity,
+    r, gv, bv, opacity:0, targetOpacity: 0.55+velocity*0.4, life:1.0,
+    decay: 0.00008+(1-velocity)*0.00006, trail:[], trailMax:180+Math.floor(velocity*200),
+    isChord, chordId, splitAt: isChord ? Date.now()+3000+Math.random()*4000 : null, hasSplit:false });
+  return orbs[orbs.length-1];
+}
+
+window._visualChordHook = function(noteNames) {
+  if (!noteNames || noteNames.length === 0) return;
+  for (let i=0; i<3; i++) spawnLiquidBlob({ x:0.2+Math.random()*0.6, y:0.2+Math.random()*0.6, hue:Math.random() });
+  const sharedAngle = Math.random()*Math.PI*2;
+  const chordId = Date.now();
+  // Shared spawn point — all chord orbs start together then peel off
+  const sharedX = 0.15 + Math.random()*0.7;
+  const sharedY = 0.2 + Math.random()*0.6;
+  noteNames.forEach((name, i) => spawnOrb({
+    noteName: name,
+    velocity: 0.5 + Math.random()*0.45,
+    isChord: true,
+    chordIndex: i,
+    chordAngle: sharedAngle,
+    chordId,
+    sharedX,
+    sharedY,
+  }));
+};
+
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LIQUID LIGHT SHOW — oil/water blob system
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const liquidBlobs = [];
+let liquidColorCursor = Math.random();
+
+function spawnLiquidBlob(opts = {}) {
+  const { x, y, hue, size } = opts;
+  liquidBlobs.push({
+    x: x || Math.random(),
+    y: y || Math.random(),
+    vx: (Math.random()-0.5) * 0.0006,
+    vy: (Math.random()-0.5) * 0.0004,
+    // Each blob has multiple lobes — like amoeba pseudopods
+    lobes: Array.from({length: 4 + Math.floor(Math.random()*4)}, () => ({
+      angle: Math.random() * Math.PI * 2,
+      dist: 0.5 + Math.random() * 0.5,  // lobe extension 0-1
+      speed: (Math.random()-0.5) * 0.008, // lobe breathing speed
+      phase: Math.random() * Math.PI * 2,
+    })),
+    baseR: (size || 0.04 + Math.random() * 0.08) * Math.min(W,H),
+    hue: hue || Math.random(),
+    hueSpeed: (Math.random()-0.5) * 0.0002,
+    opacity: 0,
+    targetOp: 0.12 + Math.random() * 0.14,
+    life: 1.0,
+    decay: 0.00004 + Math.random() * 0.00006,
+    pulsePhase: Math.random() * Math.PI * 2,
+    pulseSpeed: 0.008 + Math.random() * 0.012,
+    breatheAmt: 0.08 + Math.random() * 0.15,
   });
-  return butterflies[butterflies.length-1];
 }
 
-function spawnOrbAt(x, y, angle, opts={}) {
-  const {vol=rand(0.10,0.15), decay=rand(4,7), rev=false, linkedAngleRef=null}=opts;
-  const baseSize = rand(4,8);
-  const orb = {
-    x, y, speed: rand(0.00006, 0.00045), angle,
-    angleV: rand(-0.00004, 0.00004), angleV2: rand(-0.000004, 0.000004),
-    sinX:0, sinXSpeed:0, sinXAmp:0, sinY:0, sinYSpeed:0, sinYAmp:0,
-    size: baseSize, opacity: 0, targetOpacity: rand(0.28, 0.55),
-    life: 1.0, decay: 0.00012 + (1/decay)*0.0001,
-    rev, bias: rev ? rand(0.55,0.95) : rand(0.05,0.55),
-    age: pieceAge, trail: [], trailMax: 280, mergeCount: 0,
-    linkedAngleRef, linkedUntil: linkedAngleRef ? (Date.now()/1000 + 10) : 0,
-    pannerRef: {node: null},
-  };
-  butterflies.push(orb); return orb;
+// Spawn initial blobs
+for (let i = 0; i < 6; i++) spawnLiquidBlob();
+
+// Respawn when count drops
+function maintainLiquidBlobs() {
+  if (liquidBlobs.length < 5) spawnLiquidBlob();
+  setTimeout(maintainLiquidBlobs, 3000 + Math.random() * 5000);
 }
+maintainLiquidBlobs();
 
-let pulses=[], chordBloom=false;
-
-function triggerPulse(rev=false, vol=0.13, decay=5){
-  const orb = spawnButterfly({vol, decay, rev});
-  if(orb && ctx) {
-    // Pan = orb x position mapped to -1..1, played at next scheduled time
-    const pan = (orb.x * 2) - 1;
-    orb.pannerRef.pan = pan; // store initial pan
-  }
-}
-function triggerPolyOrb(){ spawnButterfly({vol:rand(0.05,0.08), decay:rand(2,4), rev:false}); }
-
-function triggerChordVisual(){
-  chordBloomAlpha = 0.06;
-  const sharedAngle = rand(0, Math.PI*2);
-  const cx = rand(0.25, 0.75), cy = rand(0.25, 0.75);
-  const angleRef = {angle: sharedAngle};
-  const spread = 0.04;
-  for(let i=0;i<3;i++){
-    const ox = cx + (i-1)*spread*Math.cos(sharedAngle + Math.PI*0.5);
-    const oy = cy + (i-1)*spread*Math.sin(sharedAngle + Math.PI*0.5);
-    spawnOrbAt(ox, oy, sharedAngle, {vol:rand(0.07,0.11), decay:rand(8,14), rev:false, linkedAngleRef: angleRef});
-  }
-}
-
-let swellAlpha=0, swellTarget=0, chordBloomAlpha=0, swellErase=0;
-setInterval(()=>{ swellTarget=swellActive?rand(0.025,0.055)*swellIntensity:0; },1500);
-
-let lastChordBloom=false, frame=0;
-
-// ── Projector artifacts ───────────────────────────────────────────────────────
-let flickerIntensity = 0;      // 0-1, drives brightness flash
-let flickerDecay = 0;
-
-
-function draw(){
-  requestAnimationFrame(draw); frame++;
-
-  // Before playing — clear all three canvases, show nothing
-  if(!playing){
-    g.clearRect(0,0,W,H);
-    tg.clearRect(0,0,W,H);
-    g.fillStyle='rgba(252,242,225,1)'; g.fillRect(0,0,W,H);
-    return;
-  }
-
-  if(chordBloom&&!lastChordBloom) triggerChordVisual();
-  lastChordBloom=chordBloom;
-  if(pieceStartTime) pieceAge=(Date.now()-pieceStartTime)/1000;
-  hueShift += 0.000035;
-  if(swellAlpha > 0.01){
-    const swellHue = 0.62 + Math.sin(pieceAge*0.08)*0.08;
-    hueShift += (swellHue - ((hueShift%1+1)%1)) * swellAlpha * 0.008;
-  }
-  swellAlpha += (swellTarget-swellAlpha)*0.003;
-  chordBloomAlpha *= 0.985;
-
-  const t = Math.min(pieceAge/320,1);
-  const bgR=Math.round(252-t*8), bgG=Math.round(242-t*14), bgB=Math.round(225-t*12);
-
-  if(swellActive){ swellErase += (Math.min(swellIntensity*0.85,0.92)-swellErase)*0.003; }
-  else           { swellErase += (0-swellErase)*0.001; }
-
-  const baseFade = breathPhase==='silence'?0.0006:0.00008;
-  // Density regulator — count total trail length, increase erase when too dense
-  // This keeps the canvas at the sparse Japanese line-drawing quality
-  const totalTrailPts = butterflies.reduce((s,b) => s + b.trail.length, 0);
-  const densityPressure = Math.max(0, (totalTrailPts - 800) / 2000); // kicks in above 800pts
-  const trailFade = baseFade + swellErase*0.016 + densityPressure*0.004;
-  if(frame%2===0){ tg.fillStyle=`rgba(${bgR},${bgG},${bgB},${trailFade})`; tg.fillRect(0,0,W,H); }
-
-
-  // Pearl ground
-  g.fillStyle=`rgba(255,252,245,0.06)`; g.fillRect(0,0,W,H);
-
-  // Glaze layer 1 — base field tint
-  {
-    const fieldBias = (hueShift+0.1)%1;
-    const [fr,fgv,fb] = duskRGB(fieldBias, pieceAge);
-    g.fillStyle=`rgba(${fr},${fgv},${fb},0.028)`; g.fillRect(0,0,W,H);
-  }
-
-  // Glaze layer 2 — wash blobs
-  for(const w of washes){
-    w.x+=w.vx; w.y+=w.vy; w.phase+=w.phaseSpeed;
-    if(w.x<-0.5)w.x=1.5; if(w.x>1.5)w.x=-0.5;
-    if(w.y<-0.5)w.y=1.5; if(w.y>1.5)w.y=-0.5;
-    w.opacityActual = (w.opacityActual||0)+(w.opacity-(w.opacityActual||0))*0.003;
-    w.bias = ((w.bias||0)+(w.biasDrift||0)+1.0)%1.0;
-    const pulse=1+Math.sin(w.phase)*0.06;
-    const rPx=(w.r*Math.max(W,H)*1.1)*pulse;
-    const wg=g.createRadialGradient(w.x*W,w.y*H,0,w.x*W,w.y*H,rPx);
-    const op=Math.min(w.opacityActual*(0.9+Math.sin(w.phase*1.3)*0.1)+swellAlpha*0.18,0.99);
-    const [r1,g1,b1]=duskRGB(w.bias, pieceAge);
-    const [r2,g2,b2]=duskRGB((w.bias+0.15)%1, pieceAge);
-    wg.addColorStop(0,    `rgba(${r1},${g1},${b1},${Math.min(op*0.4,0.99)})`);
-    wg.addColorStop(0.3,  `rgba(${r2},${g2},${b2},${Math.min(op*0.18,0.99)})`);
-    wg.addColorStop(0.7,  `rgba(${r2},${g2},${b2},${Math.min(op*0.04,0.99)})`);
-    wg.addColorStop(1,    'transparent');
-    g.fillStyle=wg; g.fillRect(0,0,W,H);
-  }
-
-  // Glaze layer 3 — swell shift
-  if(swellAlpha>0.003){
-    const sg=g.createLinearGradient(0,H,W,0);
-    sg.addColorStop(0,   dc(0.68, Math.min(swellAlpha*0.9,0.99), pieceAge));
-    sg.addColorStop(0.5, dc(0.52, Math.min(swellAlpha*0.5,0.99), pieceAge));
-    sg.addColorStop(1,   'transparent');
-    g.fillStyle=sg; g.fillRect(0,0,W,H);
-  }
-
-  // Specular sheen
-  {
-    const sx = 0.5+Math.sin(pieceAge*0.04)*0.35;
-    const sy = 0.3+Math.cos(pieceAge*0.028)*0.25;
-    const sheenR=Math.min(W,H)*0.7;
-    const sheenOp=Math.min(0.04+Math.sin(pieceAge*0.06)*0.02, 0.99);
-    const sg2=g.createRadialGradient(sx*W,sy*H,0,sx*W,sy*H,sheenR);
-    sg2.addColorStop(0,   `rgba(255,252,248,${Math.min(sheenOp*2,0.99)})`);
-    sg2.addColorStop(0.3, `rgba(255,250,245,${Math.min(sheenOp,0.99)})`);
-    sg2.addColorStop(1,   'transparent');
-    g.fillStyle=sg2; g.fillRect(0,0,W,H);
-  }
-
-  // Micro texture
-  if(frame%3===0){
-    const tx=rand(0,W), ty=rand(0,H), tr2=rand(8,35);
-    const tg3=g.createRadialGradient(tx,ty,0,tx,ty,tr2);
-    const [tr,tgv,tb]=duskRGB(rand(0,1), pieceAge);
-    tg3.addColorStop(0, `rgba(${tr},${tgv},${tb},${rand(0.008,0.028)})`);
-    tg3.addColorStop(1, 'transparent');
-    g.fillStyle=tg3; g.beginPath(); g.arc(tx,ty,tr2,0,Math.PI*2); g.fill();
-  }
-
-  // ── Projector flicker ────────────────────────────────────────────────────────
-  // Every ~8-15 seconds a flicker event — brightness dips then flashes
-  // Uses a slow decay so you actually see it last a few frames
-  if(coin(0.004) && flickerIntensity < 0.01){
-    // Randomly either a bright flash or a dim dip
-    flickerIntensity = coin(0.5) ? rand(0.12, 0.32) : rand(-0.08, -0.03);
-    flickerDecay = rand(0.04, 0.09); // slow decay — lasts ~10-20 frames
-  }
-  if(Math.abs(flickerIntensity) > 0.002){
-    if(flickerIntensity > 0){
-      // Bright flash — white wash
-      g.fillStyle=`rgba(255,252,245,${Math.min(flickerIntensity,0.99)})`;
-      g.fillRect(0,0,W,H);
-    } else {
-      // Dim dip — dark wash
-      g.fillStyle=`rgba(10,8,5,${Math.min(-flickerIntensity,0.99)})`;
-      g.fillRect(0,0,W,H);
-    }
-    flickerIntensity *= (1 - flickerDecay);
-  }
-
-
-  // ── Orb movement ──
-  for(let i=0;i<butterflies.length;i++){
-    const b=butterflies[i];
-    b.angleV += b.angleV2;
-    b.angleV = Math.max(-0.00045, Math.min(0.00045, b.angleV));
-    if(b.merging) continue;
-    if(b.linkedAngleRef && b.linkedUntil > Date.now()/1000){
-      b.angle = b.linkedAngleRef.angle + rand(-0.002,0.002);
-      b.linkedAngleRef.angle += b.angleV;
-    } else { b.angle += b.angleV; }
-    b.x += Math.cos(b.angle)*b.speed;
-    b.y += Math.sin(b.angle)*b.speed;
-    b.trail.push({x:b.x, y:b.y});
-    if(b.trail.length > b.trailMax) b.trail.shift();
-    if(b.x < -0.08) b.x = 1.08;
-    if(b.x >  1.08) b.x = -0.08;
-    if(b.y < -0.08) b.y = 1.08;
-    if(b.y >  1.08) b.y = -0.08;
-    if(b.opacity < b.targetOpacity) b.opacity = Math.min(b.targetOpacity, b.opacity+0.008);
+function drawLiquidBlobs() {
+  for (let i = liquidBlobs.length-1; i >= 0; i--) {
+    const b = liquidBlobs[i];
+    b.x += b.vx + (Math.random()-0.5)*0.0001;
+    b.y += b.vy + (Math.random()-0.5)*0.0001;
+    // Soft wrap
+    if (b.x < -0.2) b.x = 1.2; if (b.x > 1.2) b.x = -0.2;
+    if (b.y < -0.2) b.y = 1.2; if (b.y > 1.2) b.y = -0.2;
+    b.hue = ((b.hue + b.hueSpeed + swellShift * 0.001) + 1) % 1;
+    b.pulsePhase += b.pulseSpeed + audioBass * 0.02;
     b.life -= b.decay;
-    // Live stereo pan update — pan follows orb's x position in real time
-    if(b.pannerRef && b.pannerRef.node && playing) {
-      const targetPan = Math.max(-1, Math.min(1, (b.x * 2) - 1));
-      // Smooth pan movement — audio pan can't jump instantly
-      const currentPan = b.pannerRef.node.pan.value;
-      b.pannerRef.node.pan.value = currentPan + (targetPan - currentPan) * 0.05;
-    }
-  }
+    if (b.life <= 0) { liquidBlobs.splice(i,1); continue; }
+    if (b.opacity < b.targetOp) b.opacity += 0.001;
+    const lifeOp = b.life > 0.15 ? b.opacity : b.opacity * (b.life/0.15);
 
-  // ── Collision merging ──
-  for(let i=butterflies.length-1;i>=1;i--){
-    for(let j=i-1;j>=0;j--){
-      const a=butterflies[i], b=butterflies[j];
-      if(!a||!b) continue;
-      if(a.merging||b.merging) continue;
-      const dx=(a.x-b.x)*W, dy=(a.y-b.y)*H;
-      const dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist < (a.size+b.size)*0.85){
-        const [surv, gone] = a.size>=b.size ? [b,a] : [a,b];
-        const ti = butterflies.indexOf(gone);
-        const ts=surv.size*surv.size, tgone=gone.size*gone.size, total=ts+tgone;
-        // FIX 3: smaller merge cap — 22px max
-        surv.mergeTargetSize = Math.min(Math.sqrt(total), 12);
-        surv.mergeTargetX    = (surv.x*ts + gone.x*tgone)/total;
-        surv.mergeTargetY    = (surv.y*ts + gone.y*tgone)/total;
-        surv.mergeTargetOp   = Math.min((surv.targetOpacity*ts+gone.targetOpacity*tgone)/total, 0.62);
-        surv.merging=true; surv.mergeSpeed=0.035;
-        surv.life=Math.max(surv.life,gone.life);
-        surv.bias=(surv.bias*ts+gone.bias*tgone)/total;
-        surv.age=Math.min(surv.age,gone.age);
-        surv.trail=[...gone.trail,...surv.trail].slice(-surv.trailMax);
-        surv.mergeCount=(surv.mergeCount||0)+(gone.mergeCount||0)+1;
-        if(ti>-1) butterflies.splice(ti,1);
-        break;
-      }
-    }
-  }
-
-  // ── Animate merging ──
-  for(const b of butterflies){
-    if(!b.merging) continue;
-    b.angle += b.angleV;
-    b.mergeTargetX += Math.cos(b.angle)*b.speed;
-    b.mergeTargetY += Math.sin(b.angle)*b.speed;
-    b.mergeTargetX = Math.max(0.02, Math.min(0.98, b.mergeTargetX));
-    b.mergeTargetY = Math.max(0.02, Math.min(0.98, b.mergeTargetY));
-    b.x    += (b.mergeTargetX - b.x)    * b.mergeSpeed;
-    b.y    += (b.mergeTargetY - b.y)    * b.mergeSpeed;
-    b.size += (b.mergeTargetSize - b.size) * b.mergeSpeed;
-    b.targetOpacity += (b.mergeTargetOp - b.targetOpacity) * b.mergeSpeed;
-    if(Math.abs(b.size-b.mergeTargetSize)<0.3 && Math.abs(b.x-b.mergeTargetX)<0.002 && Math.abs(b.y-b.mergeTargetY)<0.002){
-      b.size=b.mergeTargetSize; b.merging=false;
-    }
-  }
-
-  // ── Draw & cull ──
-  for(let i=butterflies.length-1;i>=0;i--){
-    const b=butterflies[i];
-    if(b.life<=0){butterflies.splice(i,1);continue;}
-    const lifeOp = b.life > 0.25 ? b.opacity : b.opacity*(b.life/0.25);
-
-    // Paintbrush stroke — connect last two trail points with a soft line
-    if(b.trail.length > 1){
-      const mc = b.mergeCount||0;
-      const vib = b.vibrancy || 0.5;
-      const p0 = b.trail[b.trail.length-2];
-      const p1 = b.trail[b.trail.length-1];
-      const strokeW = Math.max(0.4, b.size * 0.08);  // thin like a brush pen
-      // Ink — high opacity, crisp, velocity drives darkness
-      const tOp = Math.min(b.opacity * (0.75 + vib * 0.24), 0.99);
-      // Velocity shifts color — quiet=desaturated/pale, loud=more saturated/shifted
-      const biasMod = b.bias + (vib - 0.5) * 0.18;
-      const [r1,g1,b1t]=duskRGB(Math.max(0,biasMod-0.15), b.age);
-      tg.beginPath();
-      tg.moveTo(p0.x*W, p0.y*H);
-      tg.lineTo(p1.x*W, p1.y*H);
-      tg.strokeStyle = `rgba(${r1},${g1},${b1t},${tOp})`;
-      tg.lineWidth = strokeW;
-      tg.lineCap = 'round';
-      tg.lineJoin = 'round';
-      tg.stroke();
+    // Animate lobes
+    for (const lobe of b.lobes) {
+      lobe.phase += lobe.speed;
+      lobe.dist = 0.5 + Math.sin(lobe.phase) * 0.35;
     }
 
-    // no orb head — trail only
+    // Build blob path using bezier curves through lobe tips
+    const pulse = 1 + Math.sin(b.pulsePhase) * b.breatheAmt + audioBass * 0.3;
+    const cx = b.x * W, cy = b.y * H;
+    const r = b.baseR * pulse;
+    const n = b.lobes.length;
+
+    const [rc,gc,bc] = getSunsetColor(b.hue);
+    const [rc2,gc2,bc2] = getSunsetColor((b.hue + 0.12) % 1);
+
+    // Draw blob as radial gradient with organic shape via clip path
+    g.save();
+
+    // Build organic polygon from lobes
+    g.beginPath();
+    for (let j = 0; j < n; j++) {
+      const lobe = b.lobes[j];
+      const nextLobe = b.lobes[(j+1) % n];
+      const tip = {
+        x: cx + Math.cos(lobe.angle) * r * (0.6 + lobe.dist * 0.8),
+        y: cy + Math.sin(lobe.angle) * r * (0.6 + lobe.dist * 0.8),
+      };
+      const nextTip = {
+        x: cx + Math.cos(nextLobe.angle) * r * (0.6 + nextLobe.dist * 0.8),
+        y: cy + Math.sin(nextLobe.angle) * r * (0.6 + nextLobe.dist * 0.8),
+      };
+      const ctrl = {
+        x: cx + Math.cos((lobe.angle + nextLobe.angle)/2) * r * 0.5,
+        y: cy + Math.sin((lobe.angle + nextLobe.angle)/2) * r * 0.5,
+      };
+      j === 0 ? g.moveTo(tip.x, tip.y) : null;
+      g.quadraticCurveTo(ctrl.x, ctrl.y, nextTip.x, nextTip.y);
+    }
+    g.closePath();
+
+    // Radial gradient fill — color center to edge
+    const grad = g.createRadialGradient(cx, cy, 0, cx, cy, r * 1.2);
+    grad.addColorStop(0,   `rgba(${rc2},${gc2},${bc2},${lifeOp * 0.9})`);
+    grad.addColorStop(0.5, `rgba(${rc},${gc},${bc},${lifeOp * 0.6})`);
+    grad.addColorStop(1,   `rgba(${rc},${gc},${bc},0)`);
+    g.fillStyle = grad;
+    g.fill();
+
+    // Dark interference ring at edge — like oil film
+    g.strokeStyle = `rgba(${Math.max(0,rc-60)},${Math.max(0,gc-60)},${Math.max(0,bc-60)},${lifeOp * 0.25})`;
+    g.lineWidth = 1.5;
+    g.stroke();
+
+    g.restore();
   }
 }
+
+// ── Draw loop ─────────────────────────────────────────────────────────────────
+function draw() {
+  requestAnimationFrame(draw);
+
+  // Read audio data
+  if (analyser) {
+    analyser.getByteFrequencyData(freqData);
+    // Overall amplitude — average of all bins
+    let sum = 0;
+    for (let i = 0; i < freqData.length; i++) sum += freqData[i];
+    audioAmp = (sum / freqData.length) / 255;
+    // Bass — bins 0-8 (~20-300hz)
+    let bass = 0;
+    for (let i = 0; i < 8; i++) bass += freqData[i];
+    audioBass = (bass / 8) / 255;
+    // Highs — bins 40-80 (~2k-8khz)
+    let high = 0;
+    for (let i = 40; i < 80; i++) high += freqData[i];
+    audioHigh = (high / 40) / 255;
+  }
+
+  // ── Feedback: chromatic aberration + smear ────────────────────────────────
+  off.clearRect(0, 0, W, H);
+  off.drawImage(canvas, 0, 0, W, H);
+
+  const fbScale = 1.0 + audioBass * 0.004 + 0.0008;
+  const smearX = Math.sin(Date.now() * 0.0003) * 0.8 + audioAmp * 1.5;
+  const smearY = Math.cos(Date.now() * 0.0002) * 0.4 + audioAmp * 0.8;
+  const aberration = 1.0 + audioAmp * 2.5;
+
+  // Slow cumulative spin — the whole feedback field rotates like a spiral
+  feedbackAngle += 0.00018 + audioBass * 0.0003;
+
+  // Red channel — shift right + spin
+  g.save();
+  g.globalAlpha = 0.025 + audioBass * 0.015;
+  g.translate(W/2 + aberration + smearX, H/2 + smearY * 0.5);
+  g.rotate(feedbackAngle); g.scale(fbScale, fbScale); g.translate(-W/2, -H/2);
+  g.drawImage(offscreen, 0, 0, W, H);
+  g.restore();
+
+  // Green channel — pure spin, no aberration offset
+  g.save();
+  g.globalAlpha = 0.02 + audioBass * 0.01;
+  g.translate(W/2 + smearX * 0.3, H/2 + smearY * 0.3);
+  g.rotate(feedbackAngle * 0.7); g.scale(fbScale, fbScale); g.translate(-W/2, -H/2);
+  g.drawImage(offscreen, 0, 0, W, H);
+  g.restore();
+
+  // Blue channel — opposite spin direction for chromatic twist
+  g.save();
+  g.globalAlpha = 0.025 + audioBass * 0.015;
+  g.translate(W/2 - aberration + smearX * 1.5, H/2 + smearY);
+  g.rotate(-feedbackAngle * 0.5); g.scale(fbScale, fbScale); g.translate(-W/2, -H/2);
+  g.drawImage(offscreen, 0, 0, W, H);
+  g.restore();
+
+  g.globalAlpha = 1;
+
+
+
+  // Fade trails toward transparent using destination-out
+  g.globalCompositeOperation = 'destination-out';
+  g.fillStyle = `rgba(0,0,0,${0.06 + audioAmp * 0.03})`;
+  g.fillRect(0, 0, W, H);
+  g.globalCompositeOperation = 'source-over';
+
+  // Draw liquid blobs
+  drawLiquidBlobs();
+
+  const now = Date.now();
+  for (let i = orbs.length-1; i >= 0; i--) {
+    const o = orbs[i];
+    // Slow majestic arcs — tiny acceleration, heavy damping, narrow turn range
+    o.turnAccel += (Math.random()-0.5) * 0.00006;
+    o.turnAccel *= 0.97;  // heavy damping — changes direction slowly
+    o.turnRate  += o.turnAccel;
+    o.turnRate   = Math.max(-0.004, Math.min(0.004, o.turnRate)); // tight clamp = wide arcs
+
+
+
+    o.angle += o.turnRate;
+    o.x += Math.cos(o.angle)*o.speed;
+    o.y += Math.sin(o.angle)*o.speed;
+    if (o.isChord && !o.hasSplit && o.splitAt && now > o.splitAt) {
+      o.turnRate = (Math.random()-0.5)*0.003; o.hasSplit = true;
+    }
+    if (o.x < -0.05 || o.x > 1.05 || o.y < -0.05 || o.y > 1.05) {
+      // Wrap and clear trail — prevents line drawing across screen on teleport
+      o.x = ((o.x % 1) + 1) % 1;
+      o.y = ((o.y % 1) + 1) % 1;
+      o.trail = [];
+    }
+    if (o.opacity < o.targetOpacity) o.opacity = Math.min(o.targetOpacity, o.opacity+0.006);
+    o.life -= o.decay;
+    if (o.life <= 0) { orbs.splice(i,1); continue; }
+    const lifeOp = o.life > 0.2 ? o.opacity : o.opacity*(o.life/0.2);
+    o.trail.push({x:o.x, y:o.y});
+    if (o.trail.length > o.trailMax) o.trail.shift();
+    // Draw only the newest segment — canvas accumulates the full path
+    if (o.trail.length > 2) {
+      const trail = o.trail;
+      const p0 = trail[trail.length-3];
+      const p1 = trail[trail.length-2];
+      const p2 = trail[trail.length-1];
+      const mx0=(p0.x+p1.x)/2*W, my0=(p0.y+p1.y)/2*H;
+      const mx1=(p1.x+p2.x)/2*W, my1=(p1.y+p2.y)/2*H;
+      const baseW = Math.max(0.5, o.radius * 0.35 * (1 + audioAmp * 1.2));
+      // Wide soft halo — screen blend for luminous glow
+      g.globalCompositeOperation = 'source-over';
+      g.shadowBlur = 0;
+      g.beginPath();
+      g.moveTo(mx0, my0);
+      g.quadraticCurveTo(p1.x*W, p1.y*H, mx1, my1);
+      g.strokeStyle = `rgba(${o.r},${o.gv},${o.bv},${Math.min(lifeOp * 0.35, 0.99)})`;
+      g.lineWidth = baseW * 3.0;
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.stroke();
+
+      // Mid glow with shadow
+      g.shadowColor = `rgba(${o.r},${o.gv},${o.bv},0.25)`;
+      g.shadowBlur = baseW * 0.8;
+      g.beginPath();
+      g.moveTo(mx0, my0);
+      g.quadraticCurveTo(p1.x*W, p1.y*H, mx1, my1);
+      g.strokeStyle = `rgba(${o.r},${o.gv},${o.bv},${Math.min(lifeOp * 0.70, 0.99)})`;
+      g.lineWidth = baseW * 1.0;
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.stroke();
+
+      // Crisp core
+      g.shadowBlur = 0;
+      g.beginPath();
+      g.moveTo(mx0, my0);
+      g.quadraticCurveTo(p1.x*W, p1.y*H, mx1, my1);
+      g.strokeStyle = `rgba(${o.r},${o.gv},${o.bv},${Math.min(lifeOp * 0.65, 0.99)})`;
+      g.lineWidth = baseW * 0.4;
+      g.lineCap = 'round'; g.lineJoin = 'round';
+      g.stroke();
+
+      g.globalCompositeOperation = 'source-over';
+      g.shadowBlur = 0;
+    }
+  }
+
+}
+
 draw();
+// Initial cream fill so bg isn't transparent on first frame
+bg.fillStyle = '#fcf5e8';
+bg.fillRect(0, 0, W, H);
+drawBackground();
+
 </script>
 </body>
 </html>
